@@ -1,0 +1,456 @@
+```html
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0">
+
+    <title>ESP32 DHT11 Monitor</title>
+
+    <style>
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            background: #f2f5f8;
+            min-height: 100vh;
+            padding: 30px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: auto;
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 10px;
+            color: #222;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 30px;
+        }
+
+        .status {
+            text-align: center;
+            margin-bottom: 25px;
+            padding: 10px;
+            border-radius: 8px;
+            background: #ddd;
+        }
+
+        .connected {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .disconnected {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .cards {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 25px;
+        }
+
+        .card {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            text-align: center;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+        }
+
+        .icon {
+            font-size: 45px;
+            margin-bottom: 15px;
+        }
+
+        .label {
+            font-size: 20px;
+            color: #555;
+            margin-bottom: 10px;
+        }
+
+        .value {
+            font-size: 45px;
+            font-weight: bold;
+            color: #222;
+        }
+
+        .unit {
+            font-size: 25px;
+            color: #777;
+        }
+
+        .last-update {
+            text-align: center;
+            margin-top: 30px;
+            color: #777;
+        }
+
+        @media (max-width: 600px) {
+
+            .cards {
+                grid-template-columns: 1fr;
+            }
+
+            body {
+                padding: 15px;
+            }
+
+            .value {
+                font-size: 38px;
+            }
+        }
+
+    </style>
+</head>
+
+
+<body>
+
+<div class="container">
+
+    <h1>ESP32 DHT11 Monitor</h1>
+
+    <p class="subtitle">
+        Temperature & Humidity Monitoring System
+    </p>
+
+
+    <div id="status"
+         class="status disconnected">
+
+        Connecting to Firebase...
+
+    </div>
+
+
+    <div class="cards">
+
+
+        <!-- TEMPERATURE -->
+
+        <div class="card">
+
+            <div class="icon">
+                🌡️
+            </div>
+
+            <div class="label">
+                Temperature
+            </div>
+
+            <div class="value">
+
+                <span id="temperature">
+                    -- 
+                </span>
+
+                <span class="unit">
+                    °C
+                </span>
+
+            </div>
+
+        </div>
+
+
+        <!-- HUMIDITY -->
+
+        <div class="card">
+
+            <div class="icon">
+                💧
+            </div>
+
+            <div class="label">
+                Humidity
+            </div>
+
+            <div class="value">
+
+                <span id="humidity">
+                    --
+                </span>
+
+                <span class="unit">
+                    %
+                </span>
+
+            </div>
+
+        </div>
+
+
+    </div>
+
+
+    <div class="last-update">
+
+        Last Update:
+        <span id="lastUpdate">
+            Waiting...
+        </span>
+
+    </div>
+
+</div>
+
+
+<!-- =====================================================
+     FIREBASE
+====================================================== -->
+
+<script type="module">
+
+    import {
+        initializeApp
+    }
+    from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
+
+
+    import {
+        getDatabase,
+        ref,
+        onValue,
+        onDisconnect
+    }
+    from "https://www.gstatic.com/firebasejs/12.19.0/firebase-database.js";
+
+
+    // =================================================
+    // FIREBASE CONFIGURATION
+    // =================================================
+
+    const firebaseConfig = {
+
+        apiKey:
+        "AIzaSyCqq3VGO0awcade4Mwhh5ht-YelC8xDACc",
+
+        authDomain:
+        "dht-sensor-97267.firebaseapp.com",
+
+        databaseURL:
+        "https://dht-sensor-97267-default-rtdb.asia-southeast1.firebasedatabase.app",
+
+        projectId:
+        "dht-sensor-97267",
+
+        storageBucket:
+        "dht-sensor-97267.firebasestorage.app",
+
+        messagingSenderId:
+        "456043154857",
+
+        appId:
+        "1:456043154857:web:056d6f016ede3551dec8b8",
+
+        measurementId:
+        "G-TXL6KNNHQG"
+    };
+
+
+    // =================================================
+    // INITIALIZE FIREBASE
+    // =================================================
+
+    const app =
+        initializeApp(firebaseConfig);
+
+
+    const database =
+        getDatabase(app);
+
+
+    // =================================================
+    // DATABASE REFERENCES
+    // =================================================
+
+    const temperatureRef =
+        ref(database, "ESP32/Temperature");
+
+
+    const humidityRef =
+        ref(database, "ESP32/Humidity");
+
+
+    // =================================================
+    // HTML ELEMENTS
+    // =================================================
+
+    const temperatureElement =
+        document.getElementById("temperature");
+
+
+    const humidityElement =
+        document.getElementById("humidity");
+
+
+    const statusElement =
+        document.getElementById("status");
+
+
+    const lastUpdateElement =
+        document.getElementById("lastUpdate");
+
+
+    // =================================================
+    // TEMPERATURE
+    // =================================================
+
+    onValue(
+        temperatureRef,
+
+        (snapshot) => {
+
+            const temperature =
+                snapshot.val();
+
+
+            if (temperature !== null) {
+
+                temperatureElement.textContent =
+                    Number(temperature).toFixed(1);
+
+                updateStatus();
+
+            }
+
+        },
+
+        (error) => {
+
+            console.error(
+                "Temperature error:",
+                error
+            );
+
+        }
+    );
+
+
+    // =================================================
+    // HUMIDITY
+    // =================================================
+
+    onValue(
+        humidityRef,
+
+        (snapshot) => {
+
+            const humidity =
+                snapshot.val();
+
+
+            if (humidity !== null) {
+
+                humidityElement.textContent =
+                    Number(humidity).toFixed(1);
+
+                updateStatus();
+
+            }
+
+        },
+
+        (error) => {
+
+            console.error(
+                "Humidity error:",
+                error
+            );
+
+        }
+    );
+
+
+    // =================================================
+    // STATUS
+    // =================================================
+
+    function updateStatus() {
+
+        statusElement.textContent =
+            "● Firebase Connected";
+
+        statusElement.classList.remove(
+            "disconnected"
+        );
+
+        statusElement.classList.add(
+            "connected"
+        );
+
+
+        lastUpdateElement.textContent =
+            new Date().toLocaleTimeString();
+
+    }
+
+
+    // =================================================
+    // FIREBASE CONNECTION STATUS
+    // =================================================
+
+    const connectedRef =
+        ref(database, ".info/connected");
+
+
+    onValue(
+        connectedRef,
+
+        (snapshot) => {
+
+            if (snapshot.val() === true) {
+
+                statusElement.textContent =
+                    "● Firebase Connected";
+
+                statusElement.classList.remove(
+                    "disconnected"
+                );
+
+                statusElement.classList.add(
+                    "connected"
+                );
+
+            }
+
+            else {
+
+                statusElement.textContent =
+                    "● Firebase Disconnected";
+
+                statusElement.classList.remove(
+                    "connected"
+                );
+
+                statusElement.classList.add(
+                    "disconnected"
+                );
+
+            }
+
+        }
+    );
+
+</script>
+
+</body>
+
+</html>
